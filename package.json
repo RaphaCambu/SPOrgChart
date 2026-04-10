@@ -1,0 +1,44 @@
+{
+  "name": "sporgchart",
+  "version": "0.1.0",
+  "description": "Reusable React organizational chart component with Microsoft 365-style people cards.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src/styles.css",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "if exist dist rmdir /s /q dist"
+  },
+  "peerDependencies": {
+    "@fluentui/react": "^8.124.1",
+    "react": "^17.0.0 || ^18.0.0",
+    "react-dom": "^17.0.0 || ^18.0.0"
+  },
+  "devDependencies": {
+    "@fluentui/react": "^8.124.1",
+    "@types/react": "^17.0.45",
+    "@types/react-dom": "^17.0.17",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "typescript": "^4.9.5"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./styles.css": "./src/styles.css"
+  },
+  "keywords": [
+    "react",
+    "org-chart",
+    "organizational-chart",
+    "fluent-ui",
+    "sharepoint"
+  ]
+}
