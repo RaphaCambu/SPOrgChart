@@ -89,7 +89,23 @@ const getFieldValue = (item: any, fieldName?: string): any => {
     return undefined;
   }
 
-  return item[fieldName];
+  if (Object.prototype.hasOwnProperty.call(item, fieldName)) {
+    return item[fieldName];
+  }
+
+  const pathSegments = fieldName.split(/[/.]/).filter(Boolean);
+
+  if (!pathSegments.length) {
+    return undefined;
+  }
+
+  return pathSegments.reduce((current: any, segment: string) => {
+    if (current === null || current === undefined) {
+      return undefined;
+    }
+
+    return current[segment];
+  }, item);
 };
 
 const buildTeamsChatUrl = (email?: string): string => {

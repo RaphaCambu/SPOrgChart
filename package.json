@@ -1,14 +1,16 @@
 {
   "name": "sporgchart",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reusable React organizational chart component with Microsoft 365-style people cards.",
   "license": "MIT",
+  "author": "RaphaCambu",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
     "src/styles.css",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -33,6 +35,14 @@
       "default": "./dist/index.js"
     },
     "./styles.css": "./src/styles.css"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaphaCambu/SPOrgChart.git"
+  },
+  "homepage": "https://github.com/RaphaCambu/SPOrgChart#readme",
+  "bugs": {
+    "url": "https://github.com/RaphaCambu/SPOrgChart/issues"
   },
   "keywords": [
     "react",
