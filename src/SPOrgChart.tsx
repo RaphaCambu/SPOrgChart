@@ -138,6 +138,20 @@ const materializeItems = (items: any, fieldNames: string[]): any[] => {
   return materialized;
 };
 
+const getCandidateFieldValues = (item: any, fieldNames: string[]): string[] => {
+  const values = new Set<string>();
+
+  fieldNames.forEach((fieldName: string) => {
+    const value = normalizeValue(getFieldValue(item, fieldName));
+
+    if (value) {
+      values.add(value.toLowerCase());
+    }
+  });
+
+  return Array.from(values);
+};
+
 const buildTeamsChatUrl = (email?: string): string => {
   if (!email) {
     return '';
@@ -218,9 +232,24 @@ const findRootNode = (
   const allNodes = Array.from(nodes.values());
 
   if (props.rootEmail) {
+    const normalizedRootEmail = props.rootEmail.toLowerCase();
+
     return allNodes.find((node: IOrgChartNode) => {
-      const value = normalizeValue(getFieldValue(node.item, props.emailField));
-      return value?.toLowerCase() === props.rootEmail.toLowerCase();
+      const candidateEmails = getCandidateFieldValues(node.item, [
+        props.emailField,
+        'Email',
+        'EMail',
+        'email',
+        'User/Email',
+        'User/EMail',
+        'User/email',
+        'User/UserPrincipalName',
+        'UserPrincipalName',
+        'LoginName',
+        'User/LoginName'
+      ]);
+
+      return candidateEmails.includes(normalizedRootEmail);
     });
   }
 
