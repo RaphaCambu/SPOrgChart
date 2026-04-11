@@ -20,9 +20,13 @@ interface IOrgChartNode {
 export interface ISPOrgChartProps {
   items?: any[];
   rootPersonId?: string | number;
+  rootPersonIds?: Array<string | number>;
   rootPosition?: string;
+  rootPositions?: string[];
   rootEmail?: string;
+  rootEmails?: string[];
   rootLoginName?: string;
+  rootLoginNames?: string[];
   idField?: string;
   parentIdField?: string;
   nameField?: string;
@@ -35,6 +39,14 @@ export interface ISPOrgChartProps {
   expandAll?: boolean;
   indentSize?: number;
   emptyMessage?: string;
+  valueTransforms?: Record<
+    string,
+    {
+      pattern: string;
+      replacement: string;
+      flags?: string;
+    }
+  >;
 }
 
 const DEFAULT_PROPS = {
@@ -49,7 +61,8 @@ const DEFAULT_PROPS = {
   initiallyExpanded: true,
   expandAll: true,
   indentSize: 24,
-  emptyMessage: 'No organization data available.'
+  emptyMessage: 'No organization data available.',
+  valueTransforms: {}
 };
 
 const normalizeValue = (value: any): string | undefined => {
@@ -152,12 +165,52 @@ const getCandidateFieldValues = (item: any, fieldNames: string[]): string[] => {
   return Array.from(values);
 };
 
+const applyFieldTransform = (
+  value: string | undefined,
+  fieldName: string | undefined,
+  transforms: Required<ISPOrgChartProps>['valueTransforms']
+): string | undefined => {
+  if (!value || !fieldName) {
+    return value;
+  }
+
+  const transform = transforms[fieldName];
+
+  if (!transform?.pattern) {
+    return value;
+  }
+
+  try {
+    return value.replace(new RegExp(transform.pattern, transform.flags || ''), transform.replacement);
+  } catch (_error) {
+    return value;
+  }
+};
+
+const getResolvedFieldText = (
+  item: any,
+  fieldName: string | undefined,
+  transforms: Required<ISPOrgChartProps>['valueTransforms']
+): string | undefined => {
+  const value = normalizeValue(getFieldValue(item, fieldName));
+
+  return applyFieldTransform(value, fieldName, transforms);
+};
+
 const buildTeamsChatUrl = (email?: string): string => {
   if (!email) {
     return '';
   }
 
   return `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(email)}`;
+};
+
+const buildProfilePhotoUrl = (email?: string): string => {
+  if (!email) {
+    return '';
+  }
+
+  return `/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(email)}`;
 };
 
 const normalizePresence = (value: any): string => {
@@ -220,21 +273,46 @@ const buildTree = (
   return { nodes, roots };
 };
 
-const findRootNode = (
+const findMatchingNodes = (
+  nodes: Map<string, IOrgChartNode>,
+  matcher: (node: IOrgChartNode) => boolean
+): IOrgChartNode[] => {
+  const matches: IOrgChartNode[] = [];
+  const seenNodeIds = new Set<string>();
+
+  Array.from(nodes.values()).forEach((node: IOrgChartNode) => {
+    if (!seenNodeIds.has(node.id) && matcher(node)) {
+      seenNodeIds.add(node.id);
+      matches.push(node);
+    }
+  });
+
+  return matches;
+};
+
+const findRootNodes = (
   nodes: Map<string, IOrgChartNode>,
   roots: IOrgChartNode[],
   props: Required<ISPOrgChartProps>
-): IOrgChartNode | undefined => {
-  if (props.rootPersonId !== undefined && props.rootPersonId !== null && props.rootPersonId !== '') {
-    return nodes.get(String(props.rootPersonId));
+): IOrgChartNode[] => {
+  const rootPersonIds = props.rootPersonIds.length
+    ? props.rootPersonIds
+    : props.rootPersonId !== undefined && props.rootPersonId !== null && props.rootPersonId !== ''
+      ? [props.rootPersonId]
+      : [];
+
+  if (rootPersonIds.length) {
+    return rootPersonIds
+      .map((rootPersonId: string | number) => nodes.get(String(rootPersonId)))
+      .filter((node: IOrgChartNode | undefined): node is IOrgChartNode => Boolean(node));
   }
 
-  const allNodes = Array.from(nodes.values());
+  const rootEmails = props.rootEmails.length ? props.rootEmails : props.rootEmail ? [props.rootEmail] : [];
 
-  if (props.rootEmail) {
-    const normalizedRootEmail = props.rootEmail.toLowerCase();
+  if (rootEmails.length) {
+    const normalizedRootEmails = rootEmails.map((rootEmail: string) => rootEmail.toLowerCase());
 
-    return allNodes.find((node: IOrgChartNode) => {
+    return findMatchingNodes(nodes, (node: IOrgChartNode) => {
       const candidateEmails = getCandidateFieldValues(node.item, [
         props.emailField,
         'Email',
@@ -249,25 +327,39 @@ const findRootNode = (
         'User/LoginName'
       ]);
 
-      return candidateEmails.includes(normalizedRootEmail);
+      return candidateEmails.some((candidateEmail: string) => normalizedRootEmails.includes(candidateEmail));
     });
   }
 
-  if (props.rootLoginName) {
-    return allNodes.find((node: IOrgChartNode) => {
+  const rootLoginNames = props.rootLoginNames.length
+    ? props.rootLoginNames
+    : props.rootLoginName
+      ? [props.rootLoginName]
+      : [];
+
+  if (rootLoginNames.length) {
+    const normalizedRootLoginNames = rootLoginNames.map((rootLoginName: string) => rootLoginName.toLowerCase());
+
+    return findMatchingNodes(nodes, (node: IOrgChartNode) => {
       const value = normalizeValue(getFieldValue(node.item, props.loginNameField));
-      return value?.toLowerCase() === props.rootLoginName.toLowerCase();
+
+      return value ? normalizedRootLoginNames.includes(value.toLowerCase()) : false;
     });
   }
 
-  if (props.rootPosition) {
-    return allNodes.find((node: IOrgChartNode) => {
-      const value = normalizeValue(getFieldValue(node.item, props.positionField));
-      return value?.toLowerCase() === props.rootPosition.toLowerCase();
+  const rootPositions = props.rootPositions.length ? props.rootPositions : props.rootPosition ? [props.rootPosition] : [];
+
+  if (rootPositions.length) {
+    const normalizedRootPositions = rootPositions.map((rootPosition: string) => rootPosition.toLowerCase());
+
+    return findMatchingNodes(nodes, (node: IOrgChartNode) => {
+      const value = getResolvedFieldText(node.item, props.positionField, props.valueTransforms);
+
+      return value ? normalizedRootPositions.includes(value.toLowerCase()) : false;
     });
   }
 
-  return roots[0];
+  return roots.length ? [roots[0]] : [];
 };
 
 const collectExpandableNodes = (node: IOrgChartNode, result: Record<string, boolean>): void => {
@@ -309,18 +401,20 @@ const OrgChartNodeView: React.FC<{
   const isExpanded = expandedKeys[node.id] !== false;
   const useVerticalLeafBranch =
     hasChildren && node.children.every((child: IOrgChartNode) => child.children.length === 0);
-  const name = normalizeValue(getFieldValue(node.item, resolvedProps.nameField)) || 'Unnamed person';
-  const position = normalizeValue(getFieldValue(node.item, resolvedProps.positionField)) || '';
-  const photoUrl = normalizeValue(getFieldValue(node.item, resolvedProps.photoField));
-  const email = normalizeValue(getFieldValue(node.item, resolvedProps.emailField));
-  const linkUrl = normalizeValue(getFieldValue(node.item, resolvedProps.linkField));
+  const name = getResolvedFieldText(node.item, resolvedProps.nameField, resolvedProps.valueTransforms) || 'Unnamed person';
+  const position = getResolvedFieldText(node.item, resolvedProps.positionField, resolvedProps.valueTransforms) || '';
+  const email = getResolvedFieldText(node.item, resolvedProps.emailField, resolvedProps.valueTransforms);
+  const photoUrl =
+    getResolvedFieldText(node.item, resolvedProps.photoField, resolvedProps.valueTransforms) ||
+    buildProfilePhotoUrl(email || undefined);
+  const linkUrl = getResolvedFieldText(node.item, resolvedProps.linkField, resolvedProps.valueTransforms);
   const manager = getFieldValue(node.item, 'Manager');
   const managerName =
-    normalizeValue(getFieldValue(manager, resolvedProps.nameField)) ||
-    normalizeValue(getFieldValue(manager, 'DisplayName')) ||
+    getResolvedFieldText(manager, resolvedProps.nameField, resolvedProps.valueTransforms) ||
+    getResolvedFieldText(manager, 'DisplayName', resolvedProps.valueTransforms) ||
     '';
-  const department = normalizeValue(getFieldValue(node.item, 'Department')) || '';
-  const officeLocation = normalizeValue(getFieldValue(node.item, 'OfficeLocation')) || '';
+  const department = getResolvedFieldText(node.item, 'Department', resolvedProps.valueTransforms) || '';
+  const officeLocation = getResolvedFieldText(node.item, 'OfficeLocation', resolvedProps.valueTransforms) || '';
   const presenceMeta = getPresenceMeta(getFieldValue(node.item, 'Availability'));
   const teamsChatUrl = buildTeamsChatUrl(email || undefined);
   const [isDialogOpen, setIsDialogOpen] = React.useState<boolean>(false);
@@ -482,9 +576,13 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
   const resolvedProps: Required<ISPOrgChartProps> = {
     items: props.items || [],
     rootPersonId: props.rootPersonId ?? '',
+    rootPersonIds: props.rootPersonIds ?? [],
     rootPosition: props.rootPosition ?? '',
+    rootPositions: props.rootPositions ?? [],
     rootEmail: props.rootEmail ?? '',
+    rootEmails: props.rootEmails ?? [],
     rootLoginName: props.rootLoginName ?? '',
+    rootLoginNames: props.rootLoginNames ?? [],
     idField: props.idField || DEFAULT_PROPS.idField,
     parentIdField: props.parentIdField || DEFAULT_PROPS.parentIdField,
     nameField: props.nameField || DEFAULT_PROPS.nameField,
@@ -496,7 +594,8 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
     initiallyExpanded: props.initiallyExpanded ?? DEFAULT_PROPS.initiallyExpanded,
     expandAll: props.expandAll ?? DEFAULT_PROPS.expandAll,
     indentSize: props.indentSize ?? DEFAULT_PROPS.indentSize,
-    emptyMessage: props.emptyMessage || DEFAULT_PROPS.emptyMessage
+    emptyMessage: props.emptyMessage || DEFAULT_PROPS.emptyMessage,
+    valueTransforms: props.valueTransforms || DEFAULT_PROPS.valueTransforms
   };
 
   const { nodes, roots } = React.useMemo(
@@ -531,15 +630,15 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
     ]
   );
 
-  const rootNode = React.useMemo(
-    () => findRootNode(nodes, roots, resolvedProps),
+  const rootNodes = React.useMemo(
+    () => findRootNodes(nodes, roots, resolvedProps),
     [nodes, roots, resolvedProps]
   );
 
   const [expandedKeys, setExpandedKeys] = React.useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
-    if (!rootNode) {
+    if (!rootNodes.length) {
       setExpandedKeys({});
       return;
     }
@@ -552,13 +651,17 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
     const initialKeys: Record<string, boolean> = {};
 
     if (resolvedProps.expandAll) {
-      collectExpandableNodes(rootNode, initialKeys);
-    } else if (rootNode.children.length > 0) {
-      initialKeys[rootNode.id] = true;
+      rootNodes.forEach((rootNode: IOrgChartNode) => collectExpandableNodes(rootNode, initialKeys));
+    } else {
+      rootNodes.forEach((rootNode: IOrgChartNode) => {
+        if (rootNode.children.length > 0) {
+          initialKeys[rootNode.id] = true;
+        }
+      });
     }
 
     setExpandedKeys(initialKeys);
-  }, [rootNode, resolvedProps.initiallyExpanded, resolvedProps.expandAll]);
+  }, [rootNodes, resolvedProps.initiallyExpanded, resolvedProps.expandAll]);
 
   const handleToggle = React.useCallback((nodeId: string) => {
     setExpandedKeys((previous: Record<string, boolean>) => ({
@@ -571,20 +674,23 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
     return <Text>{resolvedProps.emptyMessage}</Text>;
   }
 
-  if (!rootNode) {
+  if (!rootNodes.length) {
     return <Text>Unable to find the requested root person or position.</Text>;
   }
 
   return (
     <div className="sp-orgchart-tree" role="tree" aria-label="Organization chart">
       <ul className="sp-orgchart-rootList">
-        <OrgChartNodeView
-          node={rootNode}
-          level={0}
-          expandedKeys={expandedKeys}
-          onToggle={handleToggle}
-          resolvedProps={resolvedProps}
-        />
+        {rootNodes.map((rootNode: IOrgChartNode) => (
+          <OrgChartNodeView
+            key={rootNode.id}
+            node={rootNode}
+            level={0}
+            expandedKeys={expandedKeys}
+            onToggle={handleToggle}
+            resolvedProps={resolvedProps}
+          />
+        ))}
       </ul>
     </div>
   );
