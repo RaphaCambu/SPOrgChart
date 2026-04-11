@@ -108,6 +108,36 @@ const getFieldValue = (item: any, fieldName?: string): any => {
   }, item);
 };
 
+const materializeItems = (items: any, fieldNames: string[]): any[] => {
+  if (!items) {
+    return [];
+  }
+
+  const length = typeof items.length === 'number' ? items.length : 0;
+  const materialized: any[] = [];
+
+  for (let index = 0; index < length; index += 1) {
+    const item = items[index];
+
+    if (!item) {
+      continue;
+    }
+
+    fieldNames.forEach((fieldName: string) => {
+      if (!fieldName) {
+        return;
+      }
+
+      // Access configured fields eagerly so lazy SPData collections resolve before tree construction.
+      void getFieldValue(item, fieldName);
+    });
+
+    materialized.push(item);
+  }
+
+  return materialized;
+};
+
 const buildTeamsChatUrl = (email?: string): string => {
   if (!email) {
     return '';
@@ -441,8 +471,35 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
   };
 
   const { nodes, roots } = React.useMemo(
-    () => buildTree(resolvedProps.items, resolvedProps.idField, resolvedProps.parentIdField),
-    [resolvedProps.items, resolvedProps.idField, resolvedProps.parentIdField]
+    () => {
+      const preparedItems = materializeItems(resolvedProps.items, [
+        resolvedProps.idField,
+        resolvedProps.parentIdField,
+        resolvedProps.nameField,
+        resolvedProps.positionField,
+        resolvedProps.photoField,
+        resolvedProps.emailField,
+        resolvedProps.loginNameField,
+        resolvedProps.linkField,
+        'Manager',
+        'Department',
+        'OfficeLocation',
+        'Availability'
+      ]);
+
+      return buildTree(preparedItems, resolvedProps.idField, resolvedProps.parentIdField);
+    },
+    [
+      resolvedProps.items,
+      resolvedProps.idField,
+      resolvedProps.parentIdField,
+      resolvedProps.nameField,
+      resolvedProps.positionField,
+      resolvedProps.photoField,
+      resolvedProps.emailField,
+      resolvedProps.loginNameField,
+      resolvedProps.linkField
+    ]
   );
 
   const rootNode = React.useMemo(
