@@ -15,6 +15,20 @@ interface IOrgChartNode {
   id: string;
   parentId?: string;
   children: IOrgChartNode[];
+  data: IOrgChartNodeData;
+}
+
+interface IOrgChartNodeData {
+  name: string;
+  position: string;
+  email?: string;
+  photoUrl: string;
+  linkUrl?: string;
+  managerName: string;
+  department: string;
+  officeLocation: string;
+  presenceMeta: { label: string; className: string };
+  teamsChatUrl: string;
 }
 
 export interface ISPOrgChartProps {
@@ -37,6 +51,7 @@ export interface ISPOrgChartProps {
   linkField?: string;
   initiallyExpanded?: boolean;
   expandAll?: boolean;
+  expandAllThreshold?: number;
   indentSize?: number;
   emptyMessage?: string;
   valueTransforms?: Record<
@@ -60,6 +75,7 @@ const DEFAULT_PROPS = {
   linkField: 'ProfileUrl',
   initiallyExpanded: true,
   expandAll: true,
+  expandAllThreshold: 150,
   indentSize: 24,
   emptyMessage: 'No organization data available.',
   valueTransforms: {}
@@ -236,10 +252,45 @@ const getPresenceMeta = (availability: any): { label: string; className: string 
   }
 };
 
+const resolveNodeData = (
+  item: any,
+  props: Required<ISPOrgChartProps>
+): IOrgChartNodeData => {
+  const name = getResolvedFieldText(item, props.nameField, props.valueTransforms) || 'Unnamed person';
+  const position = getResolvedFieldText(item, props.positionField, props.valueTransforms) || '';
+  const email = getResolvedFieldText(item, props.emailField, props.valueTransforms);
+  const photoUrl =
+    getResolvedFieldText(item, props.photoField, props.valueTransforms) ||
+    buildProfilePhotoUrl(email || undefined);
+  const linkUrl = getResolvedFieldText(item, props.linkField, props.valueTransforms);
+  const manager = getFieldValue(item, 'Manager');
+  const managerName =
+    getResolvedFieldText(manager, props.nameField, props.valueTransforms) ||
+    getResolvedFieldText(manager, 'DisplayName', props.valueTransforms) ||
+    '';
+  const department = getResolvedFieldText(item, 'Department', props.valueTransforms) || '';
+  const officeLocation = getResolvedFieldText(item, 'OfficeLocation', props.valueTransforms) || '';
+  const presenceMeta = getPresenceMeta(getFieldValue(item, 'Availability'));
+
+  return {
+    name,
+    position,
+    email: email || undefined,
+    photoUrl,
+    linkUrl: linkUrl || undefined,
+    managerName,
+    department,
+    officeLocation,
+    presenceMeta,
+    teamsChatUrl: buildTeamsChatUrl(email || undefined)
+  };
+};
+
 const buildTree = (
   items: any[],
   idField: string,
-  parentIdField: string
+  parentIdField: string,
+  props: Required<ISPOrgChartProps>
 ): { nodes: Map<string, IOrgChartNode>; roots: IOrgChartNode[] } => {
   const nodes = new Map<string, IOrgChartNode>();
   const roots: IOrgChartNode[] = [];
@@ -257,7 +308,8 @@ const buildTree = (
       item,
       id,
       parentId,
-      children: []
+      children: [],
+      data: resolveNodeData(item, props)
     });
   });
 
@@ -370,6 +422,16 @@ const collectExpandableNodes = (node: IOrgChartNode, result: Record<string, bool
   node.children.forEach((child: IOrgChartNode) => collectExpandableNodes(child, result));
 };
 
+const countNodes = (node: IOrgChartNode): number => {
+  let total = 1;
+
+  node.children.forEach((child: IOrgChartNode) => {
+    total += countNodes(child);
+  });
+
+  return total;
+};
+
 const cardContainerStyles: React.CSSProperties = {
   border: '1px solid #d1d1d1',
   borderRadius: 10,
@@ -395,29 +457,14 @@ const OrgChartNodeView: React.FC<{
   level: number;
   expandedKeys: Record<string, boolean>;
   onToggle: (nodeId: string) => void;
+  onOpenDetails: (node: IOrgChartNode) => void;
   resolvedProps: Required<ISPOrgChartProps>;
-}> = ({ node, level, expandedKeys, onToggle, resolvedProps }) => {
+}> = React.memo(({ node, level, expandedKeys, onToggle, onOpenDetails, resolvedProps }) => {
   const hasChildren = node.children.length > 0;
   const isExpanded = expandedKeys[node.id] !== false;
   const useVerticalLeafBranch =
     hasChildren && node.children.every((child: IOrgChartNode) => child.children.length === 0);
-  const name = getResolvedFieldText(node.item, resolvedProps.nameField, resolvedProps.valueTransforms) || 'Unnamed person';
-  const position = getResolvedFieldText(node.item, resolvedProps.positionField, resolvedProps.valueTransforms) || '';
-  const email = getResolvedFieldText(node.item, resolvedProps.emailField, resolvedProps.valueTransforms);
-  const photoUrl =
-    getResolvedFieldText(node.item, resolvedProps.photoField, resolvedProps.valueTransforms) ||
-    buildProfilePhotoUrl(email || undefined);
-  const linkUrl = getResolvedFieldText(node.item, resolvedProps.linkField, resolvedProps.valueTransforms);
-  const manager = getFieldValue(node.item, 'Manager');
-  const managerName =
-    getResolvedFieldText(manager, resolvedProps.nameField, resolvedProps.valueTransforms) ||
-    getResolvedFieldText(manager, 'DisplayName', resolvedProps.valueTransforms) ||
-    '';
-  const department = getResolvedFieldText(node.item, 'Department', resolvedProps.valueTransforms) || '';
-  const officeLocation = getResolvedFieldText(node.item, 'OfficeLocation', resolvedProps.valueTransforms) || '';
-  const presenceMeta = getPresenceMeta(getFieldValue(node.item, 'Availability'));
-  const teamsChatUrl = buildTeamsChatUrl(email || undefined);
-  const [isDialogOpen, setIsDialogOpen] = React.useState<boolean>(false);
+  const { name, position, email, photoUrl, linkUrl, presenceMeta, teamsChatUrl } = node.data;
 
   const cardContent = (
     <>
@@ -449,7 +496,7 @@ const OrgChartNodeView: React.FC<{
             onClick={(event?: React.MouseEvent<any>) => {
               event?.preventDefault();
               event?.stopPropagation();
-              setIsDialogOpen(true);
+              onOpenDetails(node);
             }}
           />
           <Text variant="medium" className="sp-orgchart-nameText">
@@ -480,47 +527,6 @@ const OrgChartNodeView: React.FC<{
           </Stack>
         </Stack>
       </Stack>
-
-      <Dialog
-        hidden={!isDialogOpen}
-        onDismiss={() => setIsDialogOpen(false)}
-        dialogContentProps={{
-          title: ''
-        }}
-      >
-        <Stack tokens={{ childrenGap: 14 }}>
-          <Persona
-            text={name}
-            secondaryText={position}
-            imageUrl={photoUrl}
-            size={PersonaSize.size72}
-          />
-          {email ? (
-            <Stack tokens={{ childrenGap: 4 }}>
-              <Text variant="mediumPlus">Email</Text>
-              <Link href={`mailto:${email}`}>{email}</Link>
-            </Stack>
-          ) : null}
-          {managerName ? (
-            <Stack tokens={{ childrenGap: 4 }}>
-              <Text variant="mediumPlus">Manager</Text>
-              <Text>{managerName}</Text>
-            </Stack>
-          ) : null}
-          {department ? (
-            <Stack tokens={{ childrenGap: 4 }}>
-              <Text variant="mediumPlus">Department</Text>
-              <Text>{department}</Text>
-            </Stack>
-          ) : null}
-          {officeLocation ? (
-            <Stack tokens={{ childrenGap: 4 }}>
-              <Text variant="mediumPlus">Office</Text>
-              <Text>{officeLocation}</Text>
-            </Stack>
-          ) : null}
-        </Stack>
-      </Dialog>
     </>
   );
 
@@ -563,6 +569,7 @@ const OrgChartNodeView: React.FC<{
               level={level + 1}
               expandedKeys={expandedKeys}
               onToggle={onToggle}
+              onOpenDetails={onOpenDetails}
               resolvedProps={resolvedProps}
             />
           ))}
@@ -570,10 +577,19 @@ const OrgChartNodeView: React.FC<{
       ) : null}
     </li>
   );
-};
+}, (previousProps, nextProps) => {
+  return (
+    previousProps.node === nextProps.node &&
+    previousProps.level === nextProps.level &&
+    previousProps.expandedKeys[previousProps.node.id] === nextProps.expandedKeys[nextProps.node.id] &&
+    previousProps.onToggle === nextProps.onToggle &&
+    previousProps.onOpenDetails === nextProps.onOpenDetails &&
+    previousProps.resolvedProps === nextProps.resolvedProps
+  );
+});
 
 export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
-  const resolvedProps: Required<ISPOrgChartProps> = {
+  const resolvedProps: Required<ISPOrgChartProps> = React.useMemo(() => ({
     items: props.items || [],
     rootPersonId: props.rootPersonId ?? '',
     rootPersonIds: props.rootPersonIds ?? [],
@@ -593,10 +609,35 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
     linkField: props.linkField || DEFAULT_PROPS.linkField,
     initiallyExpanded: props.initiallyExpanded ?? DEFAULT_PROPS.initiallyExpanded,
     expandAll: props.expandAll ?? DEFAULT_PROPS.expandAll,
+    expandAllThreshold: props.expandAllThreshold ?? DEFAULT_PROPS.expandAllThreshold,
     indentSize: props.indentSize ?? DEFAULT_PROPS.indentSize,
     emptyMessage: props.emptyMessage || DEFAULT_PROPS.emptyMessage,
     valueTransforms: props.valueTransforms || DEFAULT_PROPS.valueTransforms
-  };
+  }), [
+    props.items,
+    props.rootPersonId,
+    props.rootPersonIds,
+    props.rootPosition,
+    props.rootPositions,
+    props.rootEmail,
+    props.rootEmails,
+    props.rootLoginName,
+    props.rootLoginNames,
+    props.idField,
+    props.parentIdField,
+    props.nameField,
+    props.positionField,
+    props.photoField,
+    props.emailField,
+    props.loginNameField,
+    props.linkField,
+    props.initiallyExpanded,
+    props.expandAll,
+    props.expandAllThreshold,
+    props.indentSize,
+    props.emptyMessage,
+    props.valueTransforms
+  ]);
 
   const { nodes, roots } = React.useMemo(
     () => {
@@ -615,7 +656,7 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
         'Availability'
       ]);
 
-      return buildTree(preparedItems, resolvedProps.idField, resolvedProps.parentIdField);
+      return buildTree(preparedItems, resolvedProps.idField, resolvedProps.parentIdField, resolvedProps);
     },
     [
       resolvedProps.items,
@@ -626,7 +667,8 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
       resolvedProps.photoField,
       resolvedProps.emailField,
       resolvedProps.loginNameField,
-      resolvedProps.linkField
+      resolvedProps.linkField,
+      resolvedProps.valueTransforms
     ]
   );
 
@@ -636,6 +678,21 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
   );
 
   const [expandedKeys, setExpandedKeys] = React.useState<Record<string, boolean>>({});
+  const [selectedNode, setSelectedNode] = React.useState<IOrgChartNode | undefined>();
+
+  const shouldExpandAllInitially = React.useMemo(() => {
+    if (!resolvedProps.expandAll) {
+      return false;
+    }
+
+    let totalNodes = 0;
+
+    rootNodes.forEach((rootNode: IOrgChartNode) => {
+      totalNodes += countNodes(rootNode);
+    });
+
+    return totalNodes <= resolvedProps.expandAllThreshold;
+  }, [rootNodes, resolvedProps.expandAll, resolvedProps.expandAllThreshold]);
 
   React.useEffect(() => {
     if (!rootNodes.length) {
@@ -650,7 +707,7 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
 
     const initialKeys: Record<string, boolean> = {};
 
-    if (resolvedProps.expandAll) {
+    if (shouldExpandAllInitially) {
       rootNodes.forEach((rootNode: IOrgChartNode) => collectExpandableNodes(rootNode, initialKeys));
     } else {
       rootNodes.forEach((rootNode: IOrgChartNode) => {
@@ -661,13 +718,17 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
     }
 
     setExpandedKeys(initialKeys);
-  }, [rootNodes, resolvedProps.initiallyExpanded, resolvedProps.expandAll]);
+  }, [rootNodes, resolvedProps.initiallyExpanded, shouldExpandAllInitially]);
 
   const handleToggle = React.useCallback((nodeId: string) => {
     setExpandedKeys((previous: Record<string, boolean>) => ({
       ...previous,
       [nodeId]: previous[nodeId] === false ? true : false
     }));
+  }, []);
+
+  const handleOpenDetails = React.useCallback((node: IOrgChartNode) => {
+    setSelectedNode(node);
   }, []);
 
   if (!resolvedProps.items.length) {
@@ -688,10 +749,54 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
             level={0}
             expandedKeys={expandedKeys}
             onToggle={handleToggle}
+            onOpenDetails={handleOpenDetails}
             resolvedProps={resolvedProps}
           />
         ))}
       </ul>
+
+      <Dialog
+        hidden={!selectedNode}
+        onDismiss={() => setSelectedNode(undefined)}
+        dialogContentProps={{
+          title: ''
+        }}
+      >
+        {selectedNode ? (
+          <Stack tokens={{ childrenGap: 14 }}>
+            <Persona
+              text={selectedNode.data.name}
+              secondaryText={selectedNode.data.position}
+              imageUrl={selectedNode.data.photoUrl}
+              size={PersonaSize.size72}
+            />
+            {selectedNode.data.email ? (
+              <Stack tokens={{ childrenGap: 4 }}>
+                <Text variant="mediumPlus">Email</Text>
+                <Link href={`mailto:${selectedNode.data.email}`}>{selectedNode.data.email}</Link>
+              </Stack>
+            ) : null}
+            {selectedNode.data.managerName ? (
+              <Stack tokens={{ childrenGap: 4 }}>
+                <Text variant="mediumPlus">Manager</Text>
+                <Text>{selectedNode.data.managerName}</Text>
+              </Stack>
+            ) : null}
+            {selectedNode.data.department ? (
+              <Stack tokens={{ childrenGap: 4 }}>
+                <Text variant="mediumPlus">Department</Text>
+                <Text>{selectedNode.data.department}</Text>
+              </Stack>
+            ) : null}
+            {selectedNode.data.officeLocation ? (
+              <Stack tokens={{ childrenGap: 4 }}>
+                <Text variant="mediumPlus">Office</Text>
+                <Text>{selectedNode.data.officeLocation}</Text>
+              </Stack>
+            ) : null}
+          </Stack>
+        ) : null}
+      </Dialog>
     </div>
   );
 };
