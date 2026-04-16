@@ -610,7 +610,9 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
     startY: number;
     scrollLeft: number;
     scrollTop: number;
+    moved: boolean;
   } | null>(null);
+  const suppressClickRef = React.useRef<boolean>(false);
   const resolvedProps: Required<ISPOrgChartProps> = React.useMemo(() => ({
     items: props.items || [],
     rootPersonId: props.rootPersonId ?? '',
@@ -704,6 +706,10 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
   const [zoom, setZoom] = React.useState<number>(1);
 
   const shouldExpandAllInitially = React.useMemo(() => {
+    if (props.expandAll === true) {
+      return true;
+    }
+
     if (!resolvedProps.expandAll) {
       return false;
     }
@@ -773,6 +779,10 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
       container.classList.remove('sp-orgchart-treeDragging');
     }
 
+    if (dragStateRef.current?.moved) {
+      suppressClickRef.current = true;
+    }
+
     dragStateRef.current = null;
   }, []);
 
@@ -784,7 +794,7 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
       return;
     }
 
-    if (target.closest('a, button, input, textarea, select, option, [role="button"]')) {
+    if (target.closest('button, input, textarea, select, option, [role="button"]')) {
       return;
     }
 
@@ -793,7 +803,8 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
       startX: event.clientX,
       startY: event.clientY,
       scrollLeft: container.scrollLeft,
-      scrollTop: container.scrollTop
+      scrollTop: container.scrollTop,
+      moved: false
     };
 
     container.classList.add('sp-orgchart-treeDragging');
@@ -806,6 +817,15 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
 
     if (!container || !dragState || dragState.pointerId !== event.pointerId) {
       return;
+    }
+
+    if (!dragState.moved) {
+      const movementX = Math.abs(event.clientX - dragState.startX);
+      const movementY = Math.abs(event.clientY - dragState.startY);
+
+      if (movementX > 4 || movementY > 4) {
+        dragState.moved = true;
+      }
     }
 
     container.scrollLeft = dragState.scrollLeft - (event.clientX - dragState.startX);
@@ -835,6 +855,16 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
     stopDragging();
   }, [stopDragging]);
 
+  const handleClickCapture = React.useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!suppressClickRef.current) {
+      return;
+    }
+
+    suppressClickRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
   if (!resolvedProps.items.length) {
     return <Text>{resolvedProps.emptyMessage}</Text>;
   }
@@ -854,6 +884,7 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onPointerLeave={handlePointerCancel}
+      onClickCapture={handleClickCapture}
     >
       <div className="sp-orgchart-controls" onPointerDown={(event) => event.stopPropagation()}>
         <IconButton
