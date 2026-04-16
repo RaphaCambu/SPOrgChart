@@ -1,6 +1,6 @@
 {
   "name": "sporgchart",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Reusable React organizational chart component with Microsoft 365-style people cards.",
   "license": "MIT",
   "author": "RaphaCambu",
