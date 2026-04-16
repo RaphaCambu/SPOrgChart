@@ -930,7 +930,8 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
         hidden={!selectedNode}
         onDismiss={() => setSelectedNode(undefined)}
         dialogContentProps={{
-          title: ''
+          title: '',
+          showCloseButton: true
         }}
       >
         {selectedNode ? (
