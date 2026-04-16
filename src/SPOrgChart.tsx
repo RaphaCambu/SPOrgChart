@@ -452,6 +452,20 @@ const toggleButtonStyles = {
   }
 };
 
+const zoomButtonStyles = {
+  root: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    border: '1px solid #c8c8c8',
+    backgroundColor: '#ffffff'
+  }
+};
+
+const MIN_ZOOM = 0.6;
+const MAX_ZOOM = 1.6;
+const ZOOM_STEP = 0.1;
+
 const OrgChartNodeView: React.FC<{
   node: IOrgChartNode;
   level: number;
@@ -589,6 +603,14 @@ const OrgChartNodeView: React.FC<{
 });
 
 export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const dragStateRef = React.useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    scrollLeft: number;
+    scrollTop: number;
+  } | null>(null);
   const resolvedProps: Required<ISPOrgChartProps> = React.useMemo(() => ({
     items: props.items || [],
     rootPersonId: props.rootPersonId ?? '',
@@ -679,6 +701,7 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
 
   const [expandedKeys, setExpandedKeys] = React.useState<Record<string, boolean>>({});
   const [selectedNode, setSelectedNode] = React.useState<IOrgChartNode | undefined>();
+  const [zoom, setZoom] = React.useState<number>(1);
 
   const shouldExpandAllInitially = React.useMemo(() => {
     if (!resolvedProps.expandAll) {
@@ -731,6 +754,87 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
     setSelectedNode(node);
   }, []);
 
+  const handleZoomIn = React.useCallback(() => {
+    setZoom((previous: number) => Math.min(MAX_ZOOM, Number((previous + ZOOM_STEP).toFixed(2))));
+  }, []);
+
+  const handleZoomOut = React.useCallback(() => {
+    setZoom((previous: number) => Math.max(MIN_ZOOM, Number((previous - ZOOM_STEP).toFixed(2))));
+  }, []);
+
+  const handleZoomReset = React.useCallback(() => {
+    setZoom(1);
+  }, []);
+
+  const stopDragging = React.useCallback(() => {
+    const container = containerRef.current;
+
+    if (container) {
+      container.classList.remove('sp-orgchart-treeDragging');
+    }
+
+    dragStateRef.current = null;
+  }, []);
+
+  const handlePointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const container = containerRef.current;
+    const target = event.target as HTMLElement | null;
+
+    if (!container || !target) {
+      return;
+    }
+
+    if (target.closest('a, button, input, textarea, select, option, [role="button"]')) {
+      return;
+    }
+
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: container.scrollLeft,
+      scrollTop: container.scrollTop
+    };
+
+    container.classList.add('sp-orgchart-treeDragging');
+    container.setPointerCapture(event.pointerId);
+  }, []);
+
+  const handlePointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const container = containerRef.current;
+    const dragState = dragStateRef.current;
+
+    if (!container || !dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    container.scrollLeft = dragState.scrollLeft - (event.clientX - dragState.startX);
+    container.scrollTop = dragState.scrollTop - (event.clientY - dragState.startY);
+  }, []);
+
+  const handlePointerUp = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const container = containerRef.current;
+    const dragState = dragStateRef.current;
+
+    if (!container || !dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    container.releasePointerCapture(event.pointerId);
+    stopDragging();
+  }, [stopDragging]);
+
+  const handlePointerCancel = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const container = containerRef.current;
+    const dragState = dragStateRef.current;
+
+    if (container && dragState && dragState.pointerId === event.pointerId) {
+      container.releasePointerCapture(event.pointerId);
+    }
+
+    stopDragging();
+  }, [stopDragging]);
+
   if (!resolvedProps.items.length) {
     return <Text>{resolvedProps.emptyMessage}</Text>;
   }
@@ -740,20 +844,56 @@ export const SPOrgChart: React.FC<ISPOrgChartProps> = (props) => {
   }
 
   return (
-    <div className="sp-orgchart-tree" role="tree" aria-label="Organization chart">
-      <ul className="sp-orgchart-rootList">
-        {rootNodes.map((rootNode: IOrgChartNode) => (
-          <OrgChartNodeView
-            key={rootNode.id}
-            node={rootNode}
-            level={0}
-            expandedKeys={expandedKeys}
-            onToggle={handleToggle}
-            onOpenDetails={handleOpenDetails}
-            resolvedProps={resolvedProps}
-          />
-        ))}
-      </ul>
+    <div
+      ref={containerRef}
+      className="sp-orgchart-tree"
+      role="tree"
+      aria-label="Organization chart"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onPointerLeave={handlePointerCancel}
+    >
+      <div className="sp-orgchart-controls" onPointerDown={(event) => event.stopPropagation()}>
+        <IconButton
+          iconProps={{ iconName: 'ZoomOut' }}
+          title="Zoom out"
+          ariaLabel="Zoom out"
+          styles={zoomButtonStyles}
+          disabled={zoom <= MIN_ZOOM}
+          onClick={handleZoomOut}
+        />
+        <DefaultButton
+          text={`${Math.round(zoom * 100)}%`}
+          className="sp-orgchart-zoomLabel"
+          onClick={handleZoomReset}
+        />
+        <IconButton
+          iconProps={{ iconName: 'ZoomIn' }}
+          title="Zoom in"
+          ariaLabel="Zoom in"
+          styles={zoomButtonStyles}
+          disabled={zoom >= MAX_ZOOM}
+          onClick={handleZoomIn}
+        />
+      </div>
+
+      <div className="sp-orgchart-canvas" style={{ transform: `scale(${zoom})` }}>
+        <ul className="sp-orgchart-rootList">
+          {rootNodes.map((rootNode: IOrgChartNode) => (
+            <OrgChartNodeView
+              key={rootNode.id}
+              node={rootNode}
+              level={0}
+              expandedKeys={expandedKeys}
+              onToggle={handleToggle}
+              onOpenDetails={handleOpenDetails}
+              resolvedProps={resolvedProps}
+            />
+          ))}
+        </ul>
+      </div>
 
       <Dialog
         hidden={!selectedNode}

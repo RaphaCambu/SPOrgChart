@@ -10,8 +10,15 @@ section {
   position: relative;
   padding: 12px 0 6px;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   min-width: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.sp-orgchart-tree.sp-orgchart-treeDragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .sp-orgchart-rootList,
@@ -19,6 +26,34 @@ section {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.sp-orgchart-controls {
+  position: sticky;
+  top: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 12px 12px;
+  pointer-events: auto;
+}
+
+.sp-orgchart-zoomLabel {
+  min-width: 68px !important;
+  height: 36px !important;
+  border-radius: 10px !important;
+  border: 1px solid #c8c8c8 !important;
+  background: #ffffff !important;
+  font-weight: 600;
+}
+
+.sp-orgchart-canvas {
+  width: max-content;
+  min-width: 100%;
+  transform-origin: top center;
+  will-change: transform;
 }
 
 .sp-orgchart-rootList {
