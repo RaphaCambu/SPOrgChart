@@ -12,3 +12,16 @@ coverage/
 .DS_Store
 .env
 .env.*
+
+# --- secrets ---
+*.pfx
+*.p12
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+*.zip
+*.tgz
+.npm-cache/
